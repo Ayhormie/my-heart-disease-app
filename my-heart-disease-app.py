@@ -13,6 +13,12 @@ def load_and_clean_data(file_content):
     
     # Store original unique values before encoding
     original_values = {}
+    required_columns = ['Age', 'Blood Pressure', 'Cholesterol Level', 'BMI', 'Sleep Hours', 
+                       'Triglyceride Level', 'Fasting Blood Sugar', 'CRP Level', 'Homocysteine Level',
+                       'Gender', 'Exercise Habits', 'Smoking', 'Family Heart Disease', 
+                       'Diabetes', 'High Blood Pressure', 'Low HDL Cholesterol', 
+                       'High LDL Cholesterol', 'Alcohol Consumption', 'Stress Level', 
+                       'Sugar Consumption', 'Heart Disease Status']
     numerical_columns = ['Age', 'Blood Pressure', 'Cholesterol Level', 'BMI', 'Sleep Hours', 
                         'Triglyceride Level', 'Fasting Blood Sugar', 'CRP Level', 'Homocysteine Level']
     categorical_columns = ['Gender', 'Exercise Habits', 'Smoking', 'Family Heart Disease', 
@@ -20,12 +26,28 @@ def load_and_clean_data(file_content):
                           'High LDL Cholesterol', 'Alcohol Consumption', 'Stress Level', 
                           'Sugar Consumption']
     
+    # Validate column names
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        st.error(f"Missing required columns: {missing_columns}. Please upload a file with all columns: {required_columns}")
+        st.stop()
+    
+    # Validate data types
+    for column in numerical_columns:
+        if not pd.api.types.is_numeric_dtype(df[column]):
+            st.error(f"Column '{column}' must be numeric. Please check your dataset.")
+            st.stop()
+    for column in categorical_columns:
+        if not pd.api.types.is_object_dtype(df[column]) and not pd.api.types.is_categorical_dtype(df[column]):
+            st.error(f"Column '{column}' must be categorical (object or category type). Please check your dataset.")
+            st.stop()
+    
     # Fill missing values
     for column in numerical_columns:
         df[column] = df[column].fillna(df[column].mean())
     for column in categorical_columns:
         df[column] = df[column].fillna(df[column].mode()[0])
-        original_values[column] = df[column].dropna().unique().tolist()  # Store original values
+        original_values[column] = df[column].dropna().unique().tolist()
     
     # Encode categorical columns
     label_encoders = {}
@@ -86,7 +108,7 @@ def main():
     st.sidebar.write("2. Fill in the input fields.")
     st.sidebar.write("3. Click 'Predict' to see the result.")
     
-    uploaded_file = st.file_uploader("Upload heart_disease.csv", type="csv")
+    uploaded_file = st.file_uploader("Upload heart_disease.csv", type=["csv"])  # Restrict to CSV
     if uploaded_file is not None:
         file_content = uploaded_file.read()
         start = time.time()
@@ -119,7 +141,7 @@ def main():
                 input_data[column] = st.number_input(f"{column}", value=float(df[column].mean()))
             
             for column in categorical_columns:
-                input_data[column] = st.selectbox(f"{column}", original_values[column])  # Use original values
+                input_data[column] = st.selectbox(f"{column}", original_values[column])
             
             predict_button = st.form_submit_button("Predict")
         
