@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import io
 import time
 
-# Load and Clean Data (with flexible columns)
+# Load and Clean Data (with original_values)
 @st.cache_data
 def load_and_clean_data(file_content):
     df = pd.read_csv(io.StringIO(file_content.decode('utf-8')))
@@ -25,8 +25,8 @@ def load_and_clean_data(file_content):
                           'High LDL Cholesterol', 'Alcohol Consumption', 'Stress Level', 
                           'Sugar Consumption']
     
-    # Validate minimum requirements (e.g., target and some features)
-    required_min = ['Age', 'Gender', 'Heart Disease Status']  # Minimum for model to work
+    # Validate minimum requirements
+    required_min = ['Age', 'Gender', 'Heart Disease Status']
     missing_min = [col for col in required_min if col not in df.columns]
     if missing_min:
         st.error(f"Missing critical columns: {missing_min}. At least {required_min} are required.")
@@ -48,9 +48,8 @@ def load_and_clean_data(file_content):
             st.error(f"Column '{column}' must be categorical. Please check your dataset.")
             st.stop()
     
-    # Fill missing values for present columns
-    for column in [col for col in numerical_columns if col in df.columns]:
-        df[column] = df[column].fillna(df[column].mean())
+    # Fill missing values and store original values
+    original_values = {}
     for column in [col for col in categorical_columns if col in df.columns]:
         df[column] = df[column].fillna(df[column].mode()[0])
         original_values[column] = df[column].dropna().unique().tolist()
@@ -62,7 +61,7 @@ def load_and_clean_data(file_content):
         df[column] = le.fit_transform(df[column])
         label_encoders[column] = le
     
-    # Encode target (required)
+    # Encode target
     le_target = LabelEncoder()
     df['Heart Disease Status'] = le_target.fit_transform(df['Heart Disease Status'])
     
@@ -122,7 +121,7 @@ def main():
     if uploaded_file is not None:
         file_content = uploaded_file.read()
         start = time.time()
-        df, label_encoders, le_target, categorical_columns, original_values = load_and_clean_data(file_content)
+        df, label_encoders, le_target, categorical_columns, original_values = load_and_clean_data(file_content)  # Ensure unpacking matches return
         st.write(f"Data cleaning time: {time.time() - start:.2f} seconds")
         
         start = time.time()
@@ -151,7 +150,7 @@ def main():
                 input_data[column] = st.number_input(f"{column}", value=float(df[column].mean()))
             
             for column in categorical_columns:
-                input_data[column] = st.selectbox(f"{column}", original_values.get(column, ['N/A']))
+                input_data[column] = st.selectbox(f"{column}", original_values.get(column, ['N/A']))  # Use .get() to handle missing keys
             
             predict_button = st.form_submit_button("Predict")
         
@@ -186,11 +185,16 @@ def main():
                 st.write("Training Data columns:", X.columns.tolist())
         
         st.subheader("Provide Feedback")
+        if "feedbacks" not in st.session_state:
+            st.session_state.feedbacks = []
         with st.form("feedback_form"):
             feedback_text = st.text_area("Your feedback or suggestions:")
             submit_feedback = st.form_submit_button("Submit Feedback")
             if submit_feedback and feedback_text:
+                st.session_state.feedbacks.append(f"{time.ctime()}: {feedback_text}")
                 st.success("Thank you for your feedback!")
+        st.subheader("Feedback Received")
+        st.write("Latest Feedback:", st.session_state.feedbacks)
 
 if __name__ == "__main__":
     main()
