@@ -108,7 +108,7 @@ def train_evaluate_model(X, y):
 
 # Streamlit App
 def main():
-    st.markdown("<h1 style='text-align: center; color: #4CAF50;'> Heart Diagnosis Predictor</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Ayhormie's Heart Diagnosis</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
     st.image("https://static.streamlit.io/badges/streamlit_badge_black_white.png", width=150)
