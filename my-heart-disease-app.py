@@ -9,25 +9,39 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import streamlit as st
 import io
 
-# Load and Clean Data
 @st.cache_data
 def load_and_clean_data(file_content):
     df = pd.read_csv(io.StringIO(file_content.decode('utf-8')))
-    for column in df.columns:
-        if df[column].dtype == 'object':
-            df[column] = df[column].fillna(df[column].mode()[0])
-        else:
-            df[column] = df[column].fillna(df[column].mean())
     
+    # Explicitly define columns
+    numerical_columns = ['Age', 'Blood Pressure', 'Cholesterol Level', 'BMI', 'Sleep Hours', 
+                        'Triglyceride Level', 'Fasting Blood Sugar', 'CRP Level', 'Homocysteine Level']
+    categorical_columns = ['Gender', 'Exercise Habits', 'Smoking', 'Family Heart Disease', 
+                          'Diabetes', 'High Blood Pressure', 'Low HDL Cholesterol', 
+                          'High LDL Cholesterol', 'Alcohol Consumption', 'Stress Level', 
+                          'Sugar Consumption']
+    
+    # Fill missing values
+    for column in numerical_columns:
+        df[column] = df[column].fillna(df[column].mean())
+    for column in categorical_columns:
+        df[column] = df[column].fillna(df[column].mode()[0])
+    
+    # Encode categorical columns (delay if needed for feature engineering)
     label_encoders = {}
-    categorical_columns = [col for col in df.columns if df[col].dtype == 'object' and col != 'Heart Disease Status']
     for column in categorical_columns:
         le = LabelEncoder()
         df[column] = le.fit_transform(df[column])
         label_encoders[column] = le
     
+    # Encode target
     le_target = LabelEncoder()
     df['Heart Disease Status'] = le_target.fit_transform(df['Heart Disease Status'])
+    
+    # Optional: Warn about high missing value percentage
+    missing_percent = df.isnull().mean() * 100
+    if any(missing_percent > 20):
+        st.warning("Some columns had more than 20% missing values. Imputation applied.")
     
     return df, label_encoders, le_target, categorical_columns
 
@@ -101,7 +115,15 @@ def train_evaluate_model(X, y):
 
 # Streamlit App
 def main():
-    st.title("Heart Disease Prediction App")
+    # Styling: Centered title with color
+    st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Ayhormie's Heart Diagnosis</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Sidebar instructions
+    st.sidebar.header("Instructions")
+    st.sidebar.write("1. Upload a 'heart_disease.csv' file with required columns.")
+    st.sidebar.write("2. Fill in the input fields.")
+    st.sidebar.write("3. Click 'Predict' to see the result.")
     
     uploaded_file = st.file_uploader("Upload heart_disease.csv", type="csv")
     if uploaded_file is not None:
@@ -117,16 +139,25 @@ def main():
         model, scaler = train_evaluate_model(X, y)
         
         st.subheader("Predict Heart Disease")
-        input_data = {}
-        numerical_columns = [col for col in df.columns if col not in categorical_columns and col not in ['BMI_Category', 'Age_Group', 'Cholesterol_Risk', 'Heart Disease Status']]
-        for column in X.columns:
-            if column in numerical_columns:
+        with st.form("prediction_form"):
+            input_data = {}
+            numerical_columns = ['Age', 'Blood Pressure', 'Cholesterol Level', 'BMI', 'Sleep Hours', 
+                                'Triglyceride Level', 'Fasting Blood Sugar', 'CRP Level', 'Homocysteine Level']
+            categorical_columns = ['Gender', 'Exercise Habits', 'Smoking', 'Family Heart Disease', 
+                                  'Diabetes', 'High Blood Pressure', 'Low HDL Cholesterol', 
+                                  'High LDL Cholesterol', 'Alcohol Consumption', 'Stress Level', 
+                                  'Sugar Consumption']
+            
+            for column in numerical_columns:
                 input_data[column] = st.number_input(f"{column}", value=float(df[column].mean()))
-            else:
-                original_values = pd.read_csv(io.StringIO(file_content.decode('utf-8')))[column].unique() if column in categorical_columns else df[column].unique()
-                input_data[column] = st.selectbox(f"{column}", original_values)
+            
+            for column in categorical_columns:
+                unique_values = df[column].dropna().unique()
+                input_data[column] = st.selectbox(f"{column}", unique_values)
+            
+            predict_button = st.form_submit_button("Predict")
         
-        if st.button("Predict"):
+        if predict_button:
             if not input_data:
                 st.error("No input data provided. Please fill in all fields.")
                 return
@@ -156,6 +187,14 @@ def main():
                 st.error(f"Prediction failed: {str(e)}")
                 st.write("Input DataFrame shape:", input_df.shape)
                 st.write("Training Data columns:", X.columns.tolist())
+        
+        # Feedback section
+        st.subheader("Provide Feedback")
+        with st.form("feedback_form"):
+            feedback_text = st.text_area("Your feedback or suggestions:")
+            submit_feedback = st.form_submit_button("Submit Feedback")
+            if submit_feedback and feedback_text:
+                st.success("Thank you for your feedback!")
 
 if __name__ == "__main__":
     main()
