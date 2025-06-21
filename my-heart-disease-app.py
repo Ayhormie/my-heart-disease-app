@@ -1,14 +1,12 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
-from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import streamlit as st
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 import io
+import time
 
+# Load and Clean Data
 @st.cache_data
 def load_and_clean_data(file_content):
     df = pd.read_csv(io.StringIO(file_content.decode('utf-8')))
@@ -27,7 +25,7 @@ def load_and_clean_data(file_content):
     for column in categorical_columns:
         df[column] = df[column].fillna(df[column].mode()[0])
     
-    # Encode categorical columns (delay if needed for feature engineering)
+    # Encode categorical columns
     label_encoders = {}
     for column in categorical_columns:
         le = LabelEncoder()
@@ -38,7 +36,7 @@ def load_and_clean_data(file_content):
     le_target = LabelEncoder()
     df['Heart Disease Status'] = le_target.fit_transform(df['Heart Disease Status'])
     
-    # Optional: Warn about high missing value percentage
+    # Warn about high missing value percentage
     missing_percent = df.isnull().mean() * 100
     if any(missing_percent > 20):
         st.warning("Some columns had more than 20% missing values. Imputation applied.")
@@ -47,77 +45,46 @@ def load_and_clean_data(file_content):
 
 # Feature Engineering
 def engineer_features(df):
-    df['BMI_Category'] = pd.qcut(df['BMI'], q=3, labels=['Low', 'Medium', 'High']).astype('category')
-    df['Age_Group'] = pd.cut(df['Age'], bins=[0, 30, 50, 80], labels=['Young', 'Middle', 'Senior']).astype('category')
-    df['Cholesterol_Risk'] = np.where(df['Cholesterol Level'] > 240, 1, 0)
-    
-    for column in ['BMI_Category', 'Age_Group']:
+    # Add Age_Group using pd.cut for binning
+    df['Age_Group'] = pd.cut(df['Age'], bins=[0, 30, 50, 100], labels=['<30', '30-50', '>50'], include_lowest=True)
+    # Add BMI_Category
+    df['BMI_Category'] = pd.cut(df['BMI'], bins=[0, 18.5, 24.9, 30, 100], labels=['Underweight', 'Normal', 'Overweight', 'Obese'], include_lowest=True)
+    # Add Cholesterol_Risk
+    df['Cholesterol_Risk'] = pd.cut(df['Cholesterol Level'], bins=[0, 200, 239, 1000], labels=['Normal', 'Borderline', 'High'], include_lowest=True)
+    # Encode new categorical features
+    for column in ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
         le = LabelEncoder()
         df[column] = le.fit_transform(df[column])
-    
     return df
 
-# EDA and Visualization
+# Exploratory Data Analysis
 def exploratory_data_analysis(df):
     st.subheader("Exploratory Data Analysis")
-    st.write("### Summary Statistics")
-    st.write(df.describe())
-    
-    st.write("### Correlation Heatmap")
-    plt.figure(figsize=(10, 6))
-    sns.heatmap(df.corr(), annot=True, cmap='coolwarm', fmt='.2f')
-    st.pyplot()
-    
-    st.write("### Feature Distributions")
-    for column in df.columns[:-1]:
-        plt.figure(figsize=(6, 4))
-        sns.histplot(data=df, x=column, hue='Heart Disease Status', multiple="stack")
-        st.pyplot()
+    st.write("Dataset Overview:", df.describe())
+    st.write("Missing Values:", df.isnull().sum())
+    # Simple visualization (e.g., bar chart for Heart Disease Status)
+    status_counts = df['Heart Disease Status'].value_counts()
+    st.bar_chart(status_counts)
 
-# Model Training and Evaluation with Tuning
+# Train and Evaluate Model
+@st.cache_resource
 def train_evaluate_model(X, y):
-    st.subheader("Model Training and Evaluation")
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
+    start = time.time()
+    model = RandomForestClassifier(n_estimators=50)  # Reduced for speed
+    model.fit(X, y)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    # Hyperparameter tuning
-    param_grid = {
-        'n_estimators': [100, 200, 300],
-        'max_depth': [10, 20, 30, None],
-        'min_samples_split': [2, 5, 10],
-        'min_samples_leaf': [1, 2, 4]
-    }
-    model = RandomForestClassifier(random_state=42)
-    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
-    grid_search.fit(X_train_scaled, y_train)
-    
-    best_model = grid_search.best_estimator_
-    st.write(f"Best Parameters: {grid_search.best_params_}")
-    st.write(f"Best Cross-Validation Score: {grid_search.best_score_:.2f}")
-    
-    # Evaluate on test set
-    y_pred = best_model.predict(X_test_scaled)
-    accuracy = accuracy_score(y_test, y_pred)
-    st.write(f"Test Accuracy: {accuracy:.2f}")
-    st.write("Classification Report:")
-    st.text(classification_report(y_test, y_pred))
-    
-    # Cross-validation score
-    cv_scores = cross_val_score(best_model, X_train_scaled, y_train, cv=5)
-    st.write(f"Cross-Validation Scores: {cv_scores}")
-    st.write(f"Mean CV Score: {cv_scores.mean():.2f} (+/- {cv_scores.std() * 2:.2f})")
-    
-    return best_model, scaler
+    X_scaled = scaler.fit_transform(X)
+    st.write(f"Model training time: {time.time() - start:.2f} seconds")
+    return model, scaler
 
 # Streamlit App
 def main():
     # Styling: Centered title with color
     st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Ayhormie's Heart Diagnosis</h1>", unsafe_allow_html=True)
     st.markdown("---")
+    
+    # Add Streamlit badge
+    st.image("https://static.streamlit.io/badges/streamlit_badge_black_white.png", width=150)
     
     # Sidebar instructions
     st.sidebar.header("Instructions")
@@ -128,15 +95,21 @@ def main():
     uploaded_file = st.file_uploader("Upload heart_disease.csv", type="csv")
     if uploaded_file is not None:
         file_content = uploaded_file.read()
+        start = time.time()
         df, label_encoders, le_target, categorical_columns = load_and_clean_data(file_content)
+        st.write(f"Data cleaning time: {time.time() - start:.2f} seconds")
         
+        start = time.time()
         df = engineer_features(df)
+        st.write(f"Feature engineering time: {time.time() - start:.2f} seconds")
         exploratory_data_analysis(df)
         
         X = df.drop('Heart Disease Status', axis=1)
         y = df['Heart Disease Status']
         
+        start = time.time()
         model, scaler = train_evaluate_model(X, y)
+        st.write(f"Total model training time: {time.time() - start:.2f} seconds (cached on first run)")
         
         st.subheader("Predict Heart Disease")
         with st.form("prediction_form"):
@@ -166,10 +139,10 @@ def main():
             st.write("Input DataFrame:", input_df)
             
             for column in input_df.columns:
-                if column in label_encoders or column in ['BMI_Category', 'Age_Group']:
-                    if column in categorical_columns:
-                        le = label_encoders[column]
-                        input_df[column] = le.transform(input_df[column])
+                if column in label_encoders or column in ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
+                    if column in categorical_columns + ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
+                        le = label_encoders.get(column, LabelEncoder())
+                        input_df[column] = le.fit_transform(input_df[column])
                     else:
                         le = LabelEncoder()
                         input_df[column] = le.fit_transform(input_df[column])
@@ -178,7 +151,9 @@ def main():
             st.write("Reindexed Input DataFrame:", input_df)
             
             try:
+                start = time.time()
                 input_scaled = scaler.transform(input_df)
+                st.write(f"Scaling time: {time.time() - start:.2f} seconds")
                 prediction = model.predict(input_scaled)
                 prediction_proba = model.predict_proba(input_scaled)
                 st.write(f"Prediction: {'Yes' if prediction[0] == 1 else 'No'}")
