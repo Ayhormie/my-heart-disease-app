@@ -6,12 +6,13 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import io
 import time
 
-# Load and Clean Data
+# Load and Clean Data (with original values stored)
 @st.cache_data
 def load_and_clean_data(file_content):
     df = pd.read_csv(io.StringIO(file_content.decode('utf-8')))
     
-    # Explicitly define columns
+    # Store original unique values before encoding
+    original_values = {}
     numerical_columns = ['Age', 'Blood Pressure', 'Cholesterol Level', 'BMI', 'Sleep Hours', 
                         'Triglyceride Level', 'Fasting Blood Sugar', 'CRP Level', 'Homocysteine Level']
     categorical_columns = ['Gender', 'Exercise Habits', 'Smoking', 'Family Heart Disease', 
@@ -24,6 +25,7 @@ def load_and_clean_data(file_content):
         df[column] = df[column].fillna(df[column].mean())
     for column in categorical_columns:
         df[column] = df[column].fillna(df[column].mode()[0])
+        original_values[column] = df[column].dropna().unique().tolist()  # Store original values
     
     # Encode categorical columns
     label_encoders = {}
@@ -41,17 +43,13 @@ def load_and_clean_data(file_content):
     if any(missing_percent > 20):
         st.warning("Some columns had more than 20% missing values. Imputation applied.")
     
-    return df, label_encoders, le_target, categorical_columns
+    return df, label_encoders, le_target, categorical_columns, original_values
 
 # Feature Engineering
 def engineer_features(df):
-    # Add Age_Group using pd.cut for binning
     df['Age_Group'] = pd.cut(df['Age'], bins=[0, 30, 50, 100], labels=['<30', '30-50', '>50'], include_lowest=True)
-    # Add BMI_Category
     df['BMI_Category'] = pd.cut(df['BMI'], bins=[0, 18.5, 24.9, 30, 100], labels=['Underweight', 'Normal', 'Overweight', 'Obese'], include_lowest=True)
-    # Add Cholesterol_Risk
     df['Cholesterol_Risk'] = pd.cut(df['Cholesterol Level'], bins=[0, 200, 239, 1000], labels=['Normal', 'Borderline', 'High'], include_lowest=True)
-    # Encode new categorical features
     for column in ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
         le = LabelEncoder()
         df[column] = le.fit_transform(df[column])
@@ -62,7 +60,6 @@ def exploratory_data_analysis(df):
     st.subheader("Exploratory Data Analysis")
     st.write("Dataset Overview:", df.describe())
     st.write("Missing Values:", df.isnull().sum())
-    # Simple visualization (e.g., bar chart for Heart Disease Status)
     status_counts = df['Heart Disease Status'].value_counts()
     st.bar_chart(status_counts)
 
@@ -70,7 +67,7 @@ def exploratory_data_analysis(df):
 @st.cache_resource
 def train_evaluate_model(X, y):
     start = time.time()
-    model = RandomForestClassifier(n_estimators=50)  # Reduced for speed
+    model = RandomForestClassifier(n_estimators=50)
     model.fit(X, y)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -79,14 +76,11 @@ def train_evaluate_model(X, y):
 
 # Streamlit App
 def main():
-    # Styling: Centered title with color
     st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Ayhormie's Heart Diagnosis</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # Add Streamlit badge
     st.image("https://static.streamlit.io/badges/streamlit_badge_black_white.png", width=150)
     
-    # Sidebar instructions
     st.sidebar.header("Instructions")
     st.sidebar.write("1. Upload a 'heart_disease.csv' file with required columns.")
     st.sidebar.write("2. Fill in the input fields.")
@@ -96,7 +90,7 @@ def main():
     if uploaded_file is not None:
         file_content = uploaded_file.read()
         start = time.time()
-        df, label_encoders, le_target, categorical_columns = load_and_clean_data(file_content)
+        df, label_encoders, le_target, categorical_columns, original_values = load_and_clean_data(file_content)
         st.write(f"Data cleaning time: {time.time() - start:.2f} seconds")
         
         start = time.time()
@@ -125,8 +119,7 @@ def main():
                 input_data[column] = st.number_input(f"{column}", value=float(df[column].mean()))
             
             for column in categorical_columns:
-                unique_values = df[column].dropna().unique()
-                input_data[column] = st.selectbox(f"{column}", unique_values)
+                input_data[column] = st.selectbox(f"{column}", original_values[column])  # Use original values
             
             predict_button = st.form_submit_button("Predict")
         
@@ -138,14 +131,11 @@ def main():
             input_df = pd.DataFrame([input_data])
             st.write("Input DataFrame:", input_df)
             
+            # Encode input data using label encoders
             for column in input_df.columns:
                 if column in label_encoders or column in ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
-                    if column in categorical_columns + ['Age_Group', 'BMI_Category', 'Cholesterol_Risk']:
-                        le = label_encoders.get(column, LabelEncoder())
-                        input_df[column] = le.fit_transform(input_df[column])
-                    else:
-                        le = LabelEncoder()
-                        input_df[column] = le.fit_transform(input_df[column])
+                    le = label_encoders.get(column, LabelEncoder())
+                    input_df[column] = le.transform(input_df[column])
             
             input_df = input_df.reindex(columns=X.columns, fill_value=0)
             st.write("Reindexed Input DataFrame:", input_df)
@@ -163,7 +153,6 @@ def main():
                 st.write("Input DataFrame shape:", input_df.shape)
                 st.write("Training Data columns:", X.columns.tolist())
         
-        # Feedback section
         st.subheader("Provide Feedback")
         with st.form("feedback_form"):
             feedback_text = st.text_area("Your feedback or suggestions:")
